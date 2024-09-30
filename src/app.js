@@ -27,6 +27,7 @@ initializeFirebase();
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+console.log("Enter")
 
 app.use(logger('combined'));
 
