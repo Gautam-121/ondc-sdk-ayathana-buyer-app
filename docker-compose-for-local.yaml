@@ -42,17 +42,6 @@ services:
       - 80
     ports:
       - 80:80
-      - 443:443
-    volumes:
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-  certbot:
-    image: certbot/certbot
-    restart: "always"
-    volumes:
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
   # Client Layer
   biap-client-node-js:
@@ -180,6 +169,9 @@ services:
       QUEUE_ENABLE: ${QUEUE_ENABLE}
       ELASTIC_SEARCH_QUEUE_ENABLE: ${ELASTIC_SEARCH_QUEUE_ENABLE}
       REGISTRY_BASE_URL: ${REGISTRY_BASE_URL}
+      PORT: 5555
+    ports:
+      - "5555:5555"
     expose:
       - 5555
   rabbitmq:
@@ -202,7 +194,7 @@ services:
       - "ES_JAVA_OPTS=-Xms2g -Xmx6g"  # Adjust as per your server resources
       - "http.max_content_length=200mb"  # Adjust based on your payload size
     volumes:
-      - /home/ubuntu/elasticsearch-data:/usr/share/elasticsearch/data
+      - D:/elasticsearch/data:/usr/share/elasticsearch/data  # Point to D: drive
     ports:
       - 9200:9200
       - 9300:9300
@@ -245,15 +237,15 @@ services:
       - 8000:8000
     expose:
       - 8000
-  bugzilla-dev-service:
-    build:
-      context: ./biap-bugzilla-service/bugzilla-main
-      dockerfile: Dockerfile
-    environment:
-      BUGZILLA_WWW: /var/www/html/bugzilla/
-      BUGZILLA_ADMIN_EMAIL: ${BUGZILLA_ADMIN_EMAIL}
-    container_name: bugzilla-dev-service
-    restart: always
-    image: shameerkc/bugzilla-dev-sqlite
-    ports:
-      - "90:80"
+  # bugzilla-dev-service:
+  #   build:
+  #     context: ./biap-bugzilla-service/bugzilla-main
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     BUGZILLA_WWW: /var/www/html/bugzilla/
+  #     BUGZILLA_ADMIN_EMAIL: ${BUGZILLA_ADMIN_EMAIL}
+  #   container_name: bugzilla-dev-service
+  #   restart: always
+  #   image: shameerkc/bugzilla-dev-sqlite
+  #   ports:
+  #     - "90:80"

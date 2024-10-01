@@ -161,7 +161,7 @@ services:
     expose:
       - 8989
     depends_on:
-      - mongo1
+      - mongo
     volumes:
       - "./images:/app/images"
     restart: always
