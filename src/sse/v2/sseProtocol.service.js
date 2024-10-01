@@ -130,11 +130,15 @@ class SseProtocol {
         try {
             const { messageId } = response;
 
+            console.log("Enter first")
+
             sendSSEResponse(
                 messageId,
                 PROTOCOL_CONTEXT.ON_SELECT,
                 response,
             );
+
+            console.log("Enter Third")
 
             return {
                 message: {

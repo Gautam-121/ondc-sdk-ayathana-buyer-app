@@ -27,47 +27,48 @@ initializeFirebase();
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-console.log("Enter")
 
 app.use(logger('combined'));
 
-if (!process.env.CORS_WHITELIST_URLS) {
-    throw new Error('CORS_WHITELIST_URLS environment variable is not set');
-}
+// if (!process.env.CORS_WHITELIST_URLS) {
+//     throw new Error('CORS_WHITELIST_URLS environment variable is not set');
+// }
 
-const whitelist = process.env.CORS_WHITELIST_URLS.split(",").map(url => url.trim());
-console.log("CORS Whitelist: ", whitelist);
+// const whitelist = process.env.CORS_WHITELIST_URLS.split(",").map(url => url.trim());
+// console.log("CORS Whitelist: ", whitelist);
 
-const corsOptionsDelegate = function (req, callback) {
-    let corsOptions = { credentials: true };
-    const origin = req.header('Origin');
+// const corsOptionsDelegate = function (req, callback) {
+//     let corsOptions = { credentials: true };
+//     const origin = req.header('Origin');
 
-    console.log('Request URL:', req.originalUrl);
-    console.log('Request Headers:', JSON.stringify(req.headers));
-    console.log('Request Origin:', origin);
-    console.log('Whitelist:', whitelist);
+//     console.log('Request URL:', req.originalUrl);
+//     console.log('Request Headers:', JSON.stringify(req.headers));
+//     console.log('Request Origin:', origin);
+//     console.log('Whitelist:', whitelist);
 
-    if (whitelist.includes(origin)) {
-        corsOptions['origin'] = true;
-    } else {
-        corsOptions['origin'] = false;
-    }
+//     if (whitelist.includes(origin)) {
+//         corsOptions['origin'] = true;
+//     } else {
+//         corsOptions['origin'] = false;
+//     }
 
-    console.log('CORS Options:', corsOptions);
-    callback(null, corsOptions);
-};
+//     console.log('CORS Options:', corsOptions);
+//     callback(null, corsOptions);
+// };
 
-// Apply CORS middleware to all routes
-app.use(cors(corsOptionsDelegate));
+// // Apply CORS middleware to all routes
+// app.use(cors(corsOptionsDelegate));
 
-// Explicitly block disallowed origins
-app.use((req, res, next) => {
-    const origin = req.header('Origin');
-    if (origin && !whitelist.includes(origin)) {
-        return res.status(403).json({ error: 'CORS policy does not allow access from this origin.' });
-    }
-    next();
-});
+// // Explicitly block disallowed origins
+// app.use((req, res, next) => {
+//     const origin = req.header('Origin');
+//     if (origin && !whitelist.includes(origin)) {
+//         return res.status(403).json({ error: 'CORS policy does not allow access from this origin.' });
+//     }
+//     next();
+// });
+
+app.use(cors())
 
 // Apply CORS with the dynamic options to routes starting with /clientApis
 app.use('/clientApis',appVersionValidator(), router);

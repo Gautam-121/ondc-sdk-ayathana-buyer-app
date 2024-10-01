@@ -26,6 +26,7 @@ class SseController {
                 const configureSse = new ConfigureSse(req, res, messageId);
                 const initSSE = configureSse.initialize();
 
+                console.log("Enter inside event trigger")
 
                 // console.log("initSSE-----------x-->",initSSE)
 
@@ -118,7 +119,10 @@ class SseController {
     onQuote(req, res, next) {
         const { body: response } = req;
 
+        console.log("Enter inside the Quote" , response)
+
         sseProtocolService.onQuote(response).then(result => {
+            console.log("Final Result" , result)
             res.json(result);
         }).catch((err) => {
             next(err);
