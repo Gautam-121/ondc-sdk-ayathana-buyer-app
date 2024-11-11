@@ -128,6 +128,19 @@ class SearchService {
         });
       }
   
+      // Add geo distance filter based on latitude and longitude
+      if (searchRequest.latitude && searchRequest.longitude) {
+        filterQuery.push({
+          geo_distance: {
+            distance: searchRequest.distance || '10km',  // Default to 10km if no distance is specified
+            "location_details.gps": {
+              lat: parseFloat(searchRequest.latitude),
+              lon: parseFloat(searchRequest.longitude),
+            },
+          }
+        });
+      }
+  
       // Construct the final query with scoring
       const finalQuery = {
         function_score: {
@@ -207,6 +220,7 @@ class SearchService {
       throw new Error(`Search failed: ${err.message}`);
     }
   }
+
   
   
   async globalSearchItems(searchRequest = {}, targetLanguage = "en") {
