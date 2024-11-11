@@ -1,7 +1,10 @@
 import { onOrderSelect } from "../../../utils/protocolApis/index.js";
 import { PROTOCOL_CONTEXT } from "../../../utils/constants.js";
 import {RetailsErrorCode} from "../../../utils/retailsErrorCode.js";
+import validateQuantity from "../../../utils/quantity.validator.js";
 
+import CartValidator from "../cart/v2/cart.validator.js";
+import NoRecordFoundError from "../../../lib/errors/no-record-found.error.js";
 import ContextFactory from "../../../factories/ContextFactory.js";
 import BppSelectService from "./bppSelect.service.js";
 import SearchService from "../../../discovery/v2/search.service.js";
@@ -28,6 +31,10 @@ class SelectOrderService {
         return items ? [...new Set(items.map(item => item.provider.id))].length > 1 : false;
     }
 
+    areMultipleDomainItemsSelected(items) {
+        return items ? [...new Set(items.map(item => item.domain))].length > 1 : false;
+    }
+
     /**
      * 
      * @param {Object} response 
@@ -41,7 +48,7 @@ class SelectOrderService {
 
         return {
             context: response?.context,
-            message: {
+            message: response?.message && {
                 quote: {
                     ...response?.message?.order
                 }
@@ -58,58 +65,131 @@ class SelectOrderService {
         try {
             const { context: requestContext, message = {} } = orderRequest || {};
             const { cart = {}, fulfillments = [], offers=[] } = message;
-
+    
             //get bpp_url and check if item is available
             let itemContext={}
-            let itemPresent=true
+            let itemPresent= { default: true }
             for(let [index,item] of cart.items.entries()){
                 let items =  await bppSearchService.getItemDetails(
-                    {id:item.id}
+                    {id:item.itemId}
                 );
+    
                 if(!items){
-                    itemPresent = false
+                    itemPresent = {
+                        default : false,
+                        itemId: item?.itemId
+                    }
+                    break;
                 }else{
-                    itemContext =items.context
+
+                    const checkQuantity = validateQuantity(items , item)
+
+                    if(checkQuantity?.status==400){
+                        return checkQuantity
+                    }
+
+                    if(item?.customizations && item.customizations.length > 0 && items?.customisation_items?.length == 0){
+                        return { status: 400 , error: { message: `No custumaztion available for item:${item?.itemId}`} }
+                    }
+    
+                    let matchedItems = []
+    
+                    if (item?.customizations && item.customizations.length > 0 && items?.customisation_items?.length > 0) {
+
+                        const validator = new CartValidator(items.customisation_groups, items.customisation_items);
+                        const validationResult = validator.validateAddToCartRequest(item , items);
+
+                        if (validationResult!==null && !validationResult.isValid) {
+                            return { status: 400 , error: { message: validationResult.errors?.[0]} }
+                        }
+                        
+                        const errors = item.customizations.map(({ groupId, choiceId }) => {
+                            // Find a matching backend customization item
+                            const matchingBackendItem = items.customisation_items.find(backendItem =>
+                                backendItem.item_details.tags.some(tag =>
+                                    tag.code === 'parent' && tag.list.some(({ value }) => value === groupId)) &&
+                                backendItem.item_details.id === choiceId);
+    
+                            if (!matchingBackendItem) {
+                                return `Customization with groupId ${groupId} and choiceId ${choiceId} does not match available options.`;
+                            } else {
+                                // If there's a match, push the item details to matchedItems
+                                matchedItems.push({...matchingBackendItem.item_details , quantity: {count: item.quantity}});
+                                return null; // No error for this customization
+                            }
+                        })
+                        .filter(error => error !== null);
+    
+                        if(errors.length > 0){
+                            return { status: 400 , error: { message: errors[0]} }
+                        }
+                    }
+    
+                    itemContext = items.context
+                    cart.items[index] = {
+                        bpp_id:items?.context?.bap_id,
+                        bpp_uri:items?.context?.bpp_uri,
+                        id:items?.id,
+                        domain:items?.context?.domain,
+                        local_id:items?.item_details?.id,
+                        tags:items?.item_details?.tags,
+                        quantity:{
+                            count: item.quantity
+                        },
+                        provider:{
+                            id: items?.provider_details?.id,
+                            locations: items?.locations,
+                            local_id: items?.provider_details?.local_id,
+                            ...items?.provider_details
+                        },
+                        product:{
+                            id: items?.id,
+                            ...items?.item_details
+                        },
+                        customizations: item?.customizations ? matchedItems : []
+                    }
                 }
-
             }
-
-            if(!itemPresent){
+    
+            if(!itemPresent?.default){
                 return {
-                    error: { message: "Invalid request" }
+                    status: 404,
+                    error: { name: "NO_RECORD_FOUND_ERROR" , message: `item not found with id:${itemPresent.itemId}` }
                 }
             }
-
+    
             const contextFactory = new ContextFactory();
             const context = contextFactory.create({
                 action: PROTOCOL_CONTEXT.SELECT,
-                transactionId: requestContext?.transaction_id,
+                transactionId: requestContext?.transaction_id ,
                 bppId: itemContext?.bpp_id,
                 bpp_uri: itemContext?.bpp_uri,
-                city:requestContext?.city,
+                city:requestContext?.city ,
                 pincode:requestContext?.pincode,
                 state:requestContext?.state,
                 domain:requestContext?.domain
             });
-
+    
             if (!(cart?.items || cart?.items?.length)) {
                 return { 
-                    context, 
                     error: { message: "Empty order received" }
                 };
             } else if (this.areMultipleBppItemsSelected(cart?.items)) {
                 return { 
-                    context, 
                     error: { message: "More than one BPP's item(s) selected/initialized" }
                 };
             }
             else if (this.areMultipleProviderItemsSelected(cart?.items)) {
                 return { 
-                    context, 
                     error: { message: "More than one Provider's item(s) selected/initialized" }
                 };
             }
-
+            else if (this.areMultipleDomainItemsSelected(cart?.items)) {
+                return { 
+                    error: { message: "More than one Domains's item(s) selected/initialized" }
+                };
+            }
+    
             return await bppSelectService.select(
                 context,
                 { cart, fulfillments,offers }
@@ -163,8 +243,15 @@ class SelectOrderService {
             //         error: protocolSelectResponse?.[0]?.error
             //     };
             // } else {
-                return this.transform(protocolSelectResponse?.[0]);
+                // return this.transform(protocolSelectResponse?.[0]);
             // }
+
+            if(protocolSelectResponse?.error?.code){
+                return this.transform(protocolSelectResponse)
+            }
+            else{
+                return this.transform(protocolSelectResponse?.[0]);
+            }
         }
         catch (err) {
             throw err;

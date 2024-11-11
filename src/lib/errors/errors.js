@@ -41,4 +41,6 @@ const ERRORS = {
     }
 }
 
+export const domainEnum = ['ONDC:RET10', 'ONDC:RET11', 'ONDC:RET12' , 'ONDC:RET13', 'ONDC:RET14', 'ONDC:RET15', 'ONDC:RET16', 'ONDC:RET17', 'ONDC:RET18', 'ONDC:RET19', 'ONDC:RET20', 'ONDC:AGR10' ]
+
 export default ERRORS;

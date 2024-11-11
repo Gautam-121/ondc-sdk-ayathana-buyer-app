@@ -15,168 +15,200 @@ class SearchService {
   isBppFilterSpecified(context = {}) {
     return typeof context.bpp_id !== "undefined";
   }
+
   async search(searchRequest = {}, targetLanguage = "en") {
     try {
       let matchQuery = [];
-      let shouldQuery = [];
+      let filterQuery = [];
   
-      // bhashini translated data
-      matchQuery.push({
-        match: {
-          language: targetLanguage,
-        },
-      });
-      matchQuery.push({
-        match: {
-          "item_details.time.label": 'enable',
-        },
-      });
-      matchQuery.push({
-        terms: {
-          "location_details.time.label": ['enable','open'],
-        },
-      });
-      matchQuery.push({
-        match: {
-          "provider_details.time.label": 'enable',
-        },
-      });
+      // Basic matches for language and time labels
+      matchQuery.push({ match: { language: targetLanguage } });
+      matchQuery.push({ match: { "item_details.time.label": 'enable' } });
+      matchQuery.push({ terms: { "location_details.time.label": ['enable', 'open'] } });
+      matchQuery.push({ match: { "provider_details.time.label": 'enable' } });
   
+      // Handle search by item name with fuzziness and match phrase
       if (searchRequest.name) {
         matchQuery.push({
-          match: {
-            "item_details.descriptor.name": searchRequest.name,
-          },
+          bool: {
+            should: [
+              {
+                match_phrase: {
+                  "item_details.descriptor.name": {
+                    query: searchRequest.name,
+                    slop: 1,
+                    boost: 4
+                  }
+                }
+              },
+              {
+                match: {
+                  "item_details.descriptor.name": {
+                    query: searchRequest.name,
+                    fuzziness: "AUTO",
+                    prefix_length: 2,
+                    operator: "OR",
+                    boost: 2
+                  }
+                }
+              }
+            ],
+            minimum_should_match: 1
+          }
         });
       }
   
+      // Filter by provider IDs, location IDs, and category IDs
       if (searchRequest.providerIds) {
-        matchQuery.push({
-          match: {
-            "provider_details.id": searchRequest.providerIds,
-          },
-        });
+        matchQuery.push({ terms: { "provider_details.id": searchRequest.providerIds.split(',') } });
       }
-  
       if (searchRequest.locationIds) {
-        matchQuery.push({
-          match: {
-            "location_details.id": searchRequest.locationIds,
-          },
-        });
+        matchQuery.push({ terms: { "location_details.id": searchRequest.locationIds.split(',') } });
       }
-  
       if (searchRequest.categoryIds) {
-        matchQuery.push({
-          match: {
-            "item_details.category_id": searchRequest.categoryIds,
-          },
-        });
+        matchQuery.push({ terms: { "item_details.category_id": searchRequest.categoryIds.split(',') } });
       }
   
+      // Handle dynamic product attributes (e.g., Brand, Size, Color)
+      const attributeQueries = [];
       for (const [key, value] of Object.entries(searchRequest)) {
         if (key.startsWith('product_attr_')) {
           const attributeName = key.slice('product_attr_'.length);
-          let values = value.split(',');
-          for (let valueObj of values) {
-            if (valueObj) {
-              shouldQuery.push({
-                nested: {
-                  path: "attribute_key_values",
-                  query: {
-                    bool: {
-                      must: [
-                        {
-                          term: {
-                            "attribute_key_values.key": attributeName,
-                          },
-                        },
-                        {
-                          term: {
-                            "attribute_key_values.value": valueObj,
-                          },
-                        },
-                      ],
-                    },
-                  },
-                },
-              });
+          const values = value.split(',');
+  
+          // Create a should query for multiple values of the same attribute
+          const valueQueries = values.map(valueObj => ({
+            nested: {
+              path: "attribute_key_values",
+              query: {
+                bool: {
+                  must: [
+                    { term: { "attribute_key_values.key": attributeName } },
+                    { terms: { "attribute_key_values.value": values.map(v => v.trim()) } }
+                  ]
+                }
+              }
             }
+          }));
+  
+          // Add the attribute query to the filter array
+          if (valueQueries.length > 0) {
+            attributeQueries.push({
+              bool: {
+                should: valueQueries,
+                minimum_should_match: 1
+              }
+            });
           }
         }
       }
   
-      // for variants we set is_first = true
-      matchQuery.push({
-        match: {
-          is_first: true,
-        },
-      });
+      // Add attribute queries to filter if they exist
+      if (attributeQueries.length > 0) {
+        filterQuery.push(...attributeQueries);
+      }
   
-      let query_obj = {
-        bool: {
-          must: matchQuery,
-          should: shouldQuery,
-          minimum_should_match: 0,
-        },
-      };
+      // Match for items that are marked as the first variant
+      matchQuery.push({ match: { is_first: true } });
   
-      // Apply function_score to boost in_stock=true items
-      let finalQuery = {
+      // Handle price range filter
+      if (searchRequest.priceMin || searchRequest.priceMax) {
+        const priceRange = {};
+        if (searchRequest.priceMin) priceRange.gte = parseFloat(searchRequest.priceMin);
+        if (searchRequest.priceMax) priceRange.lte = parseFloat(searchRequest.priceMax);
+        filterQuery.push({ range: { "item_details.price.value": priceRange } });
+      }
+  
+      // Handle rating filter
+      if (searchRequest.rating) {
+        filterQuery.push({
+          range: {
+            "item_details.rating": { gte: parseFloat(searchRequest.rating) }
+          }
+        });
+      }
+  
+      // Construct the final query with scoring
+      const finalQuery = {
         function_score: {
-          query: query_obj,
+          query: {
+            bool: {
+              must: matchQuery,
+              filter: filterQuery
+            }
+          },
           functions: [
-            {
-              filter: {
-                term: { "in_stock": true },
-              },
-              weight: 10, // Boost for in-stock items
-            },
-            {
-              filter: {
-                term: { "in_stock": false },
-              },
-              weight: 1, // Lower weight for out-of-stock items
-            },
+            { filter: { term: { "in_stock": true } }, weight: 10 },
+            { filter: { term: { "in_stock": false } }, weight: 1 }
           ],
-          score_mode: "sum", // Ensure sum mode to add up scores
-          boost_mode: "multiply", // Use multiply to enhance the effect of the weights
-        },
+          score_mode: "sum",
+          boost_mode: "multiply"
+        }
       };
   
-      // Calculate the starting point for the search
-      let size = parseInt(searchRequest.limit);
-      let page = parseInt(searchRequest.pageNumber);
+      // Handle pagination
+      const size = parseInt(searchRequest.limit) || 10;
+      const page = parseInt(searchRequest.pageNumber) || 1;
       const from = (page - 1) * size;
   
-      // Perform the search with pagination parameters
-      let queryResults = await client.search({
+      // Handle sorting
+      let sort = [];
+      if (searchRequest.sortField) {
+        switch (searchRequest.sortField) {
+          case "price":
+            sort.push({
+              "item_details.price.value": {
+                order: searchRequest.sortOrder || 'asc'
+              }
+            });
+            break;
+          case "quantity":
+            sort.push({
+              "item_details.quantity.available.count": {
+                order: searchRequest.sortOrder || 'asc'
+              }
+            });
+            break;
+          case "rating":
+            sort.push({
+              "item_details.rating": {
+                order: searchRequest.sortOrder || 'asc'
+              }
+            });
+            break;
+          default:
+            sort.push({
+              "item_details.price.value": {
+                order: searchRequest.sortOrder || 'asc'
+              }
+            });
+            break;
+        }
+      }
+  
+      // Execute the search query
+      const queryResults = await client.search({
         query: finalQuery,
         from: from,
         size: size,
+        sort: sort.length ? sort : undefined
       });
   
-      // Extract the _source field from each hit
-      let sources = queryResults.hits.hits.map((hit) => hit._source);
-  
-      // Get the total count of results
-      let totalCount = queryResults.hits.total.value;
-  
-      // Return the total count and the sources
+      // Format and return the response
       return {
         response: {
-          count: totalCount,
-          data: sources,
-          pages: Math.ceil(totalCount / size),
-        },
+          count: queryResults.hits?.total?.value || 0,
+          data: queryResults.hits?.hits.map(hit => hit._source) || [],
+          pages: Math.ceil((queryResults.hits?.total?.value || 0) / size)
+        }
       };
     } catch (err) {
-      throw err;
+      console.error('Search error:', err);
+      throw new Error(`Search failed: ${err.message}`);
     }
   }
   
   
-
   async globalSearchItems(searchRequest = {}, targetLanguage = "en") {
     try {
       let matchQuery = [];
@@ -487,8 +519,6 @@ class SearchService {
     }
   }
   
-  
-  
   async getItems(searchRequest = {}, targetLanguage = "en") {
     try {
       let matchQuery = [];
@@ -577,57 +607,90 @@ class SearchService {
     }
   }
   
-  async getProvideDetails(searchRequest = {}, targetLanguage = "en") {
+  async getProviderDetails(searchRequest = {}, targetLanguage = "en") {
     try {
-      // id=pramaan.ondc.org/alpha/mock-server_ONDC:RET12_pramaan.ondc.org/alpha/mock-server
-      let matchQuery = [];
-
-      matchQuery.push({
-        match: {
-          language: targetLanguage,
+      let matchQuery = [
+        {
+          match: {
+            language: targetLanguage,
+          },
         },
-      });
-
-      matchQuery.push({
-        match: {
-          "type": 'item',
-        },
-      })
-
-      if (searchRequest.id) {
+        {
+          match: {
+            "type": 'item',
+          },
+        }
+      ];
+  
+      if (searchRequest.providerId) {
         matchQuery.push({
           match: {
-            "provider_details.id": searchRequest.id,
+            "provider_details.id": searchRequest.providerId,
           },
         });
       }
 
+      if (searchRequest.locationId) {
+        matchQuery.push({
+          match: {
+            "location_details.id": searchRequest.locationId,
+          },
+        });
+      }
+  
+      // Define the Elasticsearch query
       let query_obj = {
         bool: {
           must: matchQuery,
         },
       };
-
+  
+      // Define aggregations to get unique category IDs
+      let aggr_query = {
+        unique_categories: {
+          terms: {
+            field: "item_details.category_id",  // Make sure this field is indexed properly
+            size: 1000  // Adjust the size based on the expected number of categories
+          }
+        }
+      };
+  
       let queryResults = await client.search({
-        query: query_obj,
+        body: {
+          query: query_obj,
+          aggs: aggr_query,
+          size: 1  // Only need 1 hit as we are using aggregations
+        }
       });
-
-      console.log(queryResults);
-
+  
+      // Extract provider details from the first hit (if available)
       let provider_details = null;
       if (queryResults.hits.hits.length > 0) {
-        let details = queryResults.hits.hits[0]._source; // Return the source of the first hit
+        let firstHit = queryResults.hits.hits[0]._source;
         provider_details = {
-          domain: details.context.domain,
-          ...details.provider_details,
+          domain: firstHit.context?.domain,
+          provider_details: (firstHit?.provider_details || {}),
+          location_details: (firstHit?.location_details || {}),
+          fulfillment_details: (firstHit?.fulfillment_details || {})
         };
       }
-
+  
+      // Extract unique categories from the aggregation result
+      let unique_categories = queryResults.aggregations.unique_categories.buckets.map(bucket => bucket.key);
+  
+      // Add categories to provider_details
+      if (provider_details) {
+        provider_details.categories = unique_categories;
+      }
+  
+      // Return the provider details with unique categories
       return provider_details;
     } catch (err) {
+      console.error('Error in getProviderDetails:', err);
       throw err;
     }
   }
+  
 
   async getLocationDetails(searchRequest = {}, targetLanguage = "en") {
     try {
@@ -706,15 +769,19 @@ class SearchService {
 
   async getItemDetails(searchRequest = {}, targetLanguage = "en") {
     try {
-      // providerIds=ondc-mock-server-dev.thewitslab.com_ONDC:RET10_ondc-mock-server-dev.thewitslab.com
       let matchQuery = [];
-
-      matchQuery.push({
-        match: {
-          language: targetLanguage,
-        },
-      });
-
+  
+      // Validate targetLanguage
+      if (targetLanguage) {
+        matchQuery.push({
+          match: {
+            language: targetLanguage,
+          },
+        });
+      }
+  
+      // Validate searchRequest.id
+      console.log("searchRequest" , searchRequest)
       if (searchRequest.id) {
         matchQuery.push({
           match: {
@@ -722,156 +789,166 @@ class SearchService {
           },
         });
       }
-
+  
       let query_obj = {
         bool: {
           must: matchQuery,
         },
       };
-
+  
       let queryResults = await client.search({
         index: 'items',
         query: query_obj,
       });
-
+  
       let item_details = null;
-      if (queryResults.hits.hits.length > 0) {
-        item_details = queryResults.hits.hits[0]._source; // Return the source of the first hit
-        item_details.customisation_items = [];
-
-        // add variant details if available
-        if (item_details.item_details.parent_item_id) {
-          // hit db to find all related items
-          let matchQuery = [];
-
-          matchQuery.push({
-            match: {
-              language: targetLanguage,
-            },
-          });
-
-          matchQuery.push({
-            match: {
-              "item_details.parent_item_id":
-                item_details.item_details.parent_item_id,
-            },
-          });
-
-          // match provider id
-          matchQuery.push({
-            match: {
-              "provider_details.id": item_details.provider_details.id,
-            },
-          });
-
-          // match location id
-          matchQuery.push({
-            match: {
-              "location_details.id": item_details.location_details.id,
-            },
-          });
-
-          matchQuery.push(
-            {
+      
+      // Validate queryResults and hits
+      if (queryResults?.hits?.hits?.length > 0) {
+        item_details = queryResults.hits.hits[0]?._source || {};
+  
+        // Initialize customisation_items if item_details exists
+        if (item_details) {
+          item_details.customisation_items = [];
+        }
+  
+        // Check for related items if parent_item_id exists
+        if (item_details?.item_details?.parent_item_id) {
+          let relatedMatchQuery = [];
+  
+          // Validate targetLanguage again for related items query
+          if (targetLanguage) {
+            relatedMatchQuery.push({
               match: {
                 language: targetLanguage,
               },
-            })
-
-          let query_obj = {
+            });
+          }
+  
+          // Validate parent_item_id
+          if (item_details?.item_details?.parent_item_id) {
+            relatedMatchQuery.push({
+              match: {
+                "item_details.parent_item_id": item_details.item_details.parent_item_id,
+              },
+            });
+          }
+  
+          // Validate provider id
+          if (item_details?.provider_details?.id) {
+            relatedMatchQuery.push({
+              match: {
+                "provider_details.id": item_details.provider_details.id,
+              },
+            });
+          }
+  
+          // Validate location id
+          if (item_details?.location_details?.id) {
+            relatedMatchQuery.push({
+              match: {
+                "location_details.id": item_details.location_details.id,
+              },
+            });
+          }
+  
+          let relatedQueryObj = {
             bool: {
-              must: matchQuery,
+              must: relatedMatchQuery,
             },
           };
-
-          let queryResults = await client.search({
-            query: query_obj,
-            size:100
+  
+          let relatedQueryResults = await client.search({
+            query: relatedQueryObj,
+            size: 100
           });
-
-          item_details.related_items = queryResults.hits.hits.map(
-            (hit) => {
-             let data =  hit._source 
-
-                   //map attribute keys 
-      const flatObject = {};
-      if(data.attribute_key_values && data.attribute_key_values.length>0){
-        data.attribute_key_values.forEach(pair => {
-          flatObject[pair.key] = pair.value;
-      });
-      }
-      data.attributes = flatObject
-
-            return  data;
-            
-            },
-          );
-        } else if (item_details.customisation_groups.length > 0) {
-          //fetch all customisation items - customisation_group_id
+  
+          // Map related items with validation
+          item_details.related_items = relatedQueryResults.hits.hits.map((hit) => {
+            let data = hit?._source || {};
+  
+            // Map attribute key-values
+            if (Array.isArray(data?.attribute_key_values)) {
+              const flatObject = {};
+              data.attribute_key_values.forEach(pair => {
+                if (pair?.key && pair?.value) {
+                  flatObject[pair.key] = pair.value;
+                }
+              });
+              data.attributes = flatObject;
+            }
+  
+            return data;
+          });
+        } else if (Array.isArray(item_details?.customisation_groups) && item_details.customisation_groups.length > 0) {
           let customisationQuery = [];
-          let groupIds = item_details.customisation_groups.map((data) => {
-            return data.id;
-          });
-
-          console.log("groupids---->", groupIds);
-          customisationQuery.push({
-            terms: {
-              customisation_group_id: groupIds,
-            },
-          });
-
-          // Add the match query for type
+          let groupIds = item_details.customisation_groups.map((data) => data?.id).filter(Boolean);
+  
+          // Validate groupIds
+          if (groupIds.length > 0) {
+            customisationQuery.push({
+              terms: {
+                customisation_group_id: groupIds,
+              },
+            });
+          }
+  
+          // Match type "customization"
           customisationQuery.push({
             match: {
               type: "customization",
             },
           });
-
-          customisationQuery.push(
-            {
+  
+          // Validate targetLanguage again for customisation query
+          if (targetLanguage) {
+            customisationQuery.push({
               match: {
                 language: targetLanguage,
               },
             });
-            
-          // Create the query object
-          let query_obj = {
+          }
+  
+          let customisationQueryObj = {
             bool: {
               must: customisationQuery,
             },
           };
-
-          let queryResults = await client.search({
-            query: query_obj,
+  
+          let customisationQueryResults = await client.search({
+            query: customisationQueryObj,
             size: 100
           });
-
-          console.log(queryResults);
-          item_details.customisation_items = queryResults.hits.hits.map(
-            (hit) => hit._source,
-          );
+  
+          // Map customisation items
+          item_details.customisation_items = customisationQueryResults.hits.hits.map((hit) => hit?._source || {});
         }
       }
-                 console.log("itemdetails--->",item_details)
-      item_details.locations = [item_details.location_details]
-
-      //map attribute keys 
-      const flatObject = {};
-      if(item_details.attribute_key_values && item_details.attribute_key_values.length>0){
-        item_details.attribute_key_values.forEach(pair => {
-          flatObject[pair.key] = pair.value;
-      });
+  
+      // Validate location_details
+      if (item_details?.location_details) {
+        item_details.locations = [item_details.location_details];
       }
-      item_details.attributes = flatObject
-
+  
+      // Map attribute key-values
+      if (Array.isArray(item_details?.attribute_key_values)) {
+        const flatObject = {};
+        item_details.attribute_key_values.forEach(pair => {
+          if (pair?.key && pair?.value) {
+            flatObject[pair.key] = pair.value;
+          }
+        });
+        item_details.attributes = flatObject;
+      }
+  
       return item_details;
-
-      // TODO: attach related items
-      // TODO: attach customisations
+  
     } catch (err) {
+      console.error("Error in getItemDetails:", err);
       throw err;
     }
   }
+  
 
   async getAttributes(searchRequest) {
     try {
@@ -908,7 +985,7 @@ class SearchService {
       if (searchRequest.provider) {
         matchQuery.push({
           match: {
-            "provider_details.id": searchRequest.provider,
+            "provider_details.id": searchRequest.providerId,
           },
         });
       }
@@ -952,91 +1029,111 @@ class SearchService {
   }
 
   async getUniqueCategories(searchRequest, targetLanguage = "en") {
-    let matchQuery = [];
-
-    if (searchRequest.domain) {
+    try {
+      let matchQuery = [];
+  
+      // Build match queries based on searchRequest parameters
+      if (searchRequest.domain) {
+        matchQuery.push({
+          match: {
+            "context.domain": searchRequest.domain,
+          },
+        });
+      }
+  
       matchQuery.push({
         match: {
-          "context.domain": searchRequest.domain,
+          language: targetLanguage,
         },
       });
-    }
-
-    matchQuery.push({
-      match: {
-        language: targetLanguage,
-      },
-    });
-
-    matchQuery.push({
-      match: {
-        "item_details.time.label": 'enable',
-      },
-    });
-    matchQuery.push({
-      terms: {
-        "location_details.time.label": ['enable','open'],
-      },
-    });
-    matchQuery.push({
-      match: {
-        "provider_details.time.label": 'enable',
-      },
-    });
-
-    matchQuery.push({
-      match: {
-        "type": 'item',
-      },
-    })
-
-    let query_obj = {
-      bool: {
-        must: matchQuery,
-      },
-    };
-
-    const totalCategories = await client.search({
-      index: "items",
-      size: 0,
-      query: query_obj,
-      aggs: {
-        domainCategories: {
-          terms: {
-            field: "context.domain",
-            size:10000000
-          },
-          aggs: {
-            uniqueCategories: {
-              terms: {
-                field: "item_details.category_id",
-                size:1000000
+  
+      matchQuery.push({
+        match: {
+          "item_details.time.label": 'enable',
+        },
+      });
+  
+      matchQuery.push({
+        terms: {
+          "location_details.time.label": ['enable', 'open'],
+        },
+      });
+  
+      matchQuery.push({
+        match: {
+          "provider_details.time.label": 'enable',
+        },
+      });
+  
+      matchQuery.push({
+        match: {
+          "type": 'item',
+        },
+      });
+  
+      let query_obj = {
+        bool: {
+          must: matchQuery,
+        },
+      };
+  
+      // Execute search with aggregations
+      const totalCategories = await client.search({
+        index: "items",
+        size: 0,
+        query: query_obj,
+        aggs: {
+          domainCategories: {
+            terms: {
+              field: "context.domain",
+              size: 10000000,
+            },
+            aggs: {
+              uniqueCategories: {
+                terms: {
+                  field: "item_details.category_id",
+                  size: 1000000,
+                },
               },
             },
           },
         },
-      },
-    });
-
-    console.log("CATEGORIES", totalCategories);
-  
-    const domainBuckets = totalCategories.aggregations.domainCategories.buckets;
-
-    console.log("DOMAIN BUCKETS", totalCategories.aggregations.domainCategories.buckets);
-
-    let result = {};
-  
-    domainBuckets.forEach(domainBucket => {
-      const domainName = domainBucket.key;
-      const uniqueCategories = domainBucket.uniqueCategories.buckets.map(category => {
-
-        return { code: category.key, label: category.key,url:CATEGORIES[category.key] };
       });
   
-      result[domainName] = uniqueCategories;
-    });
+      // Check if aggregations exist in the response
+      if (!totalCategories.aggregations || !totalCategories.aggregations.domainCategories) {
+        throw new Error("Missing aggregations in Elasticsearch response.");
+      }
+  
+      const domainBuckets = totalCategories.aggregations.domainCategories.buckets;
+      let result = {};
 
-      return result;
+      console.log("domainBucket" , domainBuckets)
+  
+      // Process and structure the results
+      domainBuckets.forEach(domainBucket => {
+        const domainName = domainBucket.key;
+        let uniqueCategories = domainBucket.uniqueCategories.buckets.map(category => ({
+          code: category.key,
+          label: category.key,
+          url: CATEGORIES[category.key], // Ensure CATEGORIES has mappings or handle undefined URLs
+        }));
+
+        uniqueCategories = uniqueCategories.filter(category => category.url)
+        result[domainName] = uniqueCategories;
+      });
+
+      if(domainBuckets.length == 0){
+        return null
+      }
+
+      return result 
+  
+    } catch (error) {
+      console.error("Error in getUniqueCategories:", error);
+      // Return a clear error response or throw the error, depending on requirements
+      throw error;
+    }
   }
   
   async getAttributesValues(searchRequest) {
@@ -1066,7 +1163,7 @@ class SearchService {
       if (searchRequest.provider) {
         matchQuery.push({
           match: {
-            "provider_details.id": searchRequest.provider,
+            "provider_details.id": searchRequest.providerId,
           },
         });
       }
@@ -1137,6 +1234,7 @@ class SearchService {
       throw err;
     }
   }
+
   async getLocations(searchRequest, targetLanguage = "en") {
     try {
         // Match queries for filtering
@@ -1297,7 +1395,6 @@ class SearchService {
         throw err;
     }
 }
-
 
 async getLocationsNearest(searchRequest, targetLanguage = "en") {
   try {
@@ -1782,97 +1879,122 @@ async getGlobalProviders(searchRequest, targetLanguage = "en") {
   }
 }
 
+async getProviders(searchRequest, targetLanguage = "en") {
+  try {
+    let filterArray = [];
+    let limit = searchRequest.limit || 10;
 
-  async getProviders(searchRequest, targetLanguage = "en") {
-    try {
-      console.log("searchRequest", searchRequest)
-      let query_obj = {
-        bool: {
-          must: [
-            {
-              match: {
-                language: targetLanguage,
-              },
-              
-            },
-            {
-              match: {
-                "type": 'item',
-              },
-            },
-            {
-              match: {
-                "item_details.time.label": 'enable',
-              },
-            },
-            {
-              terms: {
-                "location_details.time.label": ['enable','open'],
-              },
-            },
-            {
-              match: {
-                "provider_details.time.label": 'enable',
-              },
-            }
-          ]
-        }
-      };
+    filterArray.push({
+      geo_distance: {
+        distance: searchRequest.distance || '10km',
+        "location_details.gps": {
+          lat: parseFloat(searchRequest.latitude),
+          lon: parseFloat(searchRequest.longitude),
+        },
+      },
+    });
 
-      let aggr_query = {
-        unique_providers: {
-          composite: {
-            size: searchRequest.limit,
-            sources: [
-              { provider_id: { terms: { field: "provider_details.id" } } }
-            ],
-            after: searchRequest.afterKey ? { provider_id: searchRequest.afterKey } : undefined
-          },
-          aggs: {
-            products: {
-              top_hits: {
-                size: 1,
+    // Main query
+    let query_obj = {
+      bool: {
+        must: [
+          { match: { language: targetLanguage } },
+          { match: { type: "item" } },
+          { match: { "item_details.time.label": "enable" } },
+          { terms: { "location_details.time.label": ["enable", "open"] } },
+          { match: { "provider_details.time.label": "enable" } },
+          ...(searchRequest.name ? [
+            {
+              bool: {
+                should: [
+                  { match_phrase: { "provider_details.descriptor.name": { query: searchRequest.name, slop: 1, boost: 3 } } },
+                  { match: { "provider_details.descriptor.name": { query: searchRequest.name, fuzziness: "AUTO", prefix_length: 2, operator: "OR", boost: 2 } } }
+                ],
+                minimum_should_match: 1
               }
             }
-          }
+          ] : []),
+          ...(searchRequest.domain ? [{ match: { "context.domain": searchRequest.domain } }] : [])
+        ],
+        filter: filterArray
+      }
+    };
+
+    // Aggregation setup for unique providers and unique locations using geohash_grid
+    let aggr_query = {
+      unique_providers: {
+        composite: {
+          size: limit,
+          sources: [{ provider_id: { terms: { field: "provider_details.id" } } }],
+          after: searchRequest.afterKey ? { provider_id: searchRequest.afterKey } : undefined
         },
-        unique_provider_count: {
-          cardinality: {
-            field: "provider_details.id"
+        aggs: {
+          unique_locations: {
+            geohash_grid: {
+              field: "location_details.gps",
+              precision: 5 // Adjust precision for location clustering
+            },
+            aggs: {
+              location_details: {
+                top_hits: {
+                  _source: ["location_details.*"], // Include location details
+                  size: 1
+                }
+              }
+            }
+          },
+          products: {
+            top_hits: {
+              _source: ["provider_details.*", "fulfillment_details.*"],
+              size: 1, // Only need one instance of provider details
+            }
           }
         }
-      };
+      },
+      unique_provider_count: {
+        cardinality: {
+          field: "provider_details.id",
+        },
+      }
+    };
 
-      let queryResults = await client.search({
-        body: {
-          query: query_obj,
-          aggs: aggr_query,
-          size: 0
-        }
-      });
+    const queryResults = await client.search({
+      body: {
+        query: query_obj,
+        aggs: aggr_query,
+        size: 0,
+      },
+    });
 
-      let unique_providers = queryResults.aggregations.unique_providers.buckets.map(bucket => {
-        return bucket.products.hits.hits[0]._source.provider_details;
-      });
-
-      let totalCount = queryResults.aggregations.unique_provider_count.value;
-      let totalPages = Math.ceil(totalCount / searchRequest.limit);
-
-      let afterKey = queryResults.aggregations.unique_providers.after_key;
+    // Process results
+    const unique_providers = queryResults.aggregations.unique_providers.buckets.map((bucket) => {
+      const providerDetails = bucket.products.hits.hits[0]._source.provider_details;
+      const uniqueLocations = bucket.unique_locations.buckets.map(locBucket => locBucket.location_details.hits.hits[0]._source.location_details);
 
       return {
-        response: {
-          count: totalCount,
-          data: unique_providers,
-          afterKey: afterKey,
-          pages: totalPages
-        }
+        provider_details: providerDetails,
+        locations: uniqueLocations // List of all unique locations for this provider
       };
+    });
 
-    } catch (err) {
-      throw err;
-    }
+    const totalCount = queryResults.aggregations.unique_provider_count.value;
+    const totalPages = Math.ceil(totalCount / limit);
+    const afterKey = queryResults.aggregations.unique_providers.after_key;
+
+    return {
+      response: {
+        count: totalCount,
+        data: unique_providers,
+        afterKey: afterKey,
+        pages: totalPages,
+      },
+    };
+
+  } catch (err) {
+    console.error('Error in getProviders:', err);
+    throw err;
   }
+}
 
   async getProviders1(indexName, pageSize, afterKey = null) {
     const body = {

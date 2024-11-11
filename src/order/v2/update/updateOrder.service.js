@@ -356,6 +356,8 @@ class UpdateOrderService {
 
             let protocolUpdateResponse = await onUpdateStatus(messageId);
 
+            console.log("Inside on_updateDBOperation" , protocolUpdateResponse)
+
             if (!(protocolUpdateResponse && protocolUpdateResponse.length)) {
                 const contextFactory = new ContextFactory();
                 const context = contextFactory.create({

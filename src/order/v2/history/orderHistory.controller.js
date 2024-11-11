@@ -1,5 +1,6 @@
 import OrderHistoryService from './orderHistory.service.js';
 import BadRequestParameterError from '../../../lib/errors/bad-request-parameter.error.js';
+import {validationResult} from "express-validator"
 
 const orderHistoryService = new OrderHistoryService();
 
@@ -13,6 +14,21 @@ class OrderHistoryController {
     * @return {callback}
     */
     getOrdersList(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            const error = [
+                {
+                    status: 400,
+                    error: {
+                        name: "BAD_REQUEST_PARAMETER_ERROR",
+                        message: errors.array()[0].msg
+                    }
+                }
+            ]
+            return res.status(400).json(error)
+        }
+
         const { query = {}, user } = req;
 
         const { pageNumber = 1 } = query;

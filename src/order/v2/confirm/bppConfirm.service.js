@@ -158,7 +158,7 @@ class BppConfirmService {
                         [
                             {
                                 "code":"tax_number",
-                                "value":"GSTIN1234567890"
+                                "value":process.env.BAP_GST_NUMBER || "22AAAAA0000A1Z5" 
                             }
                         ]
                 }
@@ -247,10 +247,10 @@ class BppConfirmService {
                         }),
                         payment: {
                             uri:order?.payment?.type === PAYMENT_TYPES["ON-ORDER"] ?
-                                "https://razorpay.com/":
+                                "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay":
                                 undefined, //In case of pre-paid collection by the buyer app, the payment link is rendered after the buyer app sends ACK for /on_init but before calling /confirm;
                             tl_method:order?.payment?.type === PAYMENT_TYPES["ON-ORDER"] ?
-                                "http/get":
+                                "http/post":
                                 undefined,
                             params: {
                                 amount: order?.payment?.paid_amount?.toFixed(2)?.toString(),
@@ -279,8 +279,7 @@ class BppConfirmService {
                         quote: {
                             ...(qoute)
                         },
-                        tags: bpp_terms
-                            ,
+                        tags: bpp_terms,
                         created_at:context.timestamp,
                         updated_at:context.timestamp
                     }

@@ -57,6 +57,8 @@ export const PROTOCOL_CONTEXT = {
     ON_UPDATE: "on_update",
     RATING: "rating",
     ON_RATING: "on_rating",
+    INFO: "info",
+    ON_INFO: "on_info"
 };
 
 export const PROTOCOL_PAYMENT = {
@@ -131,4 +133,19 @@ export const OBJECT_TYPE = {
     LOCATION_DETAILS: 'LOCATION_DETAILS',
     ITEM_DETAILS:'ITEM_DETAILS',
     CUSTOMMENU_ITEMS: 'CUSTOMMENU_ITEMS'
+};
+
+export const PHONEPE_STATUS = {
+    IN_PROGRESS: 'PAYMENT_PENDING',
+    COMPLETED: 'PAYMENT_SUCCESS',
+    FAILED: 'PAYMENT_ERROR',
+    REVERSED: 'TXN_REVERSED',
+    DECLINED: "PAYMENT_DECLINED",
+    TIMED_OUT: "TIMED_OUT"
+}
+
+export const PLATFORMS = {
+    WEB: 'web',
+    ANDROID: 'android',
+    IOS: 'ios'
 };

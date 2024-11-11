@@ -94,6 +94,35 @@ class SseController {
     }
 
     /**
+    * on info 
+    * @param {*} req    HTTP request object
+    * @param {*} res    HTTP response object
+    * @param {*} next   Callback argument to the middleware function
+    * @return {callback}
+    */
+
+    onInfo(req, res, next) {
+        const { body: response } = req;
+
+        sseProtocolService.onInfo(response).then(result => {
+            res.json(result);
+        }).catch((err) => {
+            next(err);
+        });
+    }
+
+
+    info(req, res, next) {
+        const { body: response } = req;
+
+        sseProtocolService.info(response).then(result => {
+            res.json(result);
+        }).catch((err) => {
+            next(err);
+        });
+    }
+
+    /**
     * on search 
     * @param {*} req    HTTP request object
     * @param {*} res    HTTP response object
@@ -183,9 +212,13 @@ class SseController {
     onUpdate(req, res, next) {
         const { body: response } = req;
 
+        console.log("Enter on_update" , response)
+
         sseProtocolService.onUpdate(response).then(result => {
+            console.log("Enter response" , result)
             res.json(result);
         }).catch((err) => {
+            console.log("Enter error" , err)
             next(err);
         });
     }

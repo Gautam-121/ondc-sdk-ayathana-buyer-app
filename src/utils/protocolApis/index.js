@@ -124,6 +124,18 @@ const protocolInit = async (data) => {
     );
 
     const result = await apiCall.send();
+    // Check if result.data exists
+    if (!result.data) {
+        return {
+          message : { ack : { status : "NACK" }},
+          error:{
+             type: "server-error",
+             code: 500,
+             message: "Internal Server Error"
+          }
+        }
+    }
+    console.log("resultData" , result.data)
     return result.data;
 }
 
@@ -568,9 +580,7 @@ const onUpdateStatus = async (messageId) => {
 };
 
 /**
-<<<<<<< HEAD
  * on select order
-=======
  * quote order
  * @param {Object} data 
  * @returns 
@@ -586,14 +596,24 @@ const protocolSelect = async (data) => {
             ...data
         }
     );
-
     const result = await apiCall.send();
+    // Check if result.data exists
+    if (!result.data) {
+        return {
+          message : { ack : { status : "NACK" }},
+          error:{
+             type: "server-error",
+             code: 500,
+             message: "Internal Server Error"
+          }
+        }
+    }
+    console.log("resultData" , result.data)
     return result.data;
 }
 
 /**
  * on quote order
->>>>>>> 4ca1e5244701ec9d181f924c64d8a79d21f70ec6
  * @param {String} messageId 
  */
 const onOrderSelect = async (messageId) => {
@@ -605,6 +625,7 @@ const onOrderSelect = async (messageId) => {
     );
 
     const result = await apiCall.send();
+    console.log("result" , result)
     return result.data;
 };
 

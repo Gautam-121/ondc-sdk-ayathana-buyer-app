@@ -1,5 +1,6 @@
 import InitOrderService from './initOrder.service.js';
 import BadRequestParameterError from '../../../lib/errors/bad-request-parameter.error.js';
+import {validationResult} from "express-validator"
 
 const initOrderService = new InitOrderService();
 
@@ -30,6 +31,21 @@ class InitOrderController {
     * @return {callback}
     */
     initMultipleOrder(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            const error = [
+                {
+                    status: 400,
+                    error: {
+                        name: "BAD_REQUEST_PARAMETER_ERROR",
+                        message: errors.array()[0].msg
+                    }
+                }
+            ]
+            return res.status(400).json(error)
+        }
+
         const { body: orderRequests, user } = req;
 
         if (orderRequests && orderRequests.length) {

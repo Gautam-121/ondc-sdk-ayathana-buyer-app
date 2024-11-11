@@ -106,7 +106,7 @@ const getOrderById = async (orderId) => {
         id: orderId
     }).lean();
 
-    if (!(order || order.length))
+    if (!order.length)
         throw new NoRecordFoundError();
     else{
         // order = order.toJSON();

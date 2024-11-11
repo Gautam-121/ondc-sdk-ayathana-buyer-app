@@ -112,7 +112,7 @@ class BppSelectService {
             console.log("select request",JSON.stringify(selectRequest))
             const response = await protocolSelect(selectRequest);
 
-            return { context: context, message: response.message };
+            return { context: context, message: response?.message , error: response?.error };
         }
         catch (err) {
 

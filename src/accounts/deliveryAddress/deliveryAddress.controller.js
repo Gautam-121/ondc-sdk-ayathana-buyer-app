@@ -1,5 +1,6 @@
 import BadRequestParameterError from '../../lib/errors/bad-request-parameter.error.js';
 import DeliveryAddressService from './deliveryAddress.service.js';
+import {validationResult} from "express-validator"
 
 const deliveryAddressService = new DeliveryAddressService();
 
@@ -13,6 +14,12 @@ class DeliveryAddressController {
     * @return {callback}
     */
     deliveryAddress(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+
         const { body: request, user} = req;
 
         deliveryAddressService.deliveryAddress(request, user).then(response => {
@@ -48,6 +55,12 @@ class DeliveryAddressController {
     * @return {callback}
     */
     updateDeliveryAddress(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+
         const { body: request, params, user } = req;
         const { id } = params;
 

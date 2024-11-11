@@ -95,6 +95,62 @@ class SseProtocol {
         }
     }
 
+
+     /**
+    * on info
+    * @param {Object} response 
+    */
+     async onInfo(response) {
+        try {
+            const { messageId } = response;
+
+
+            console.log(`[DEBUG] onInit---${messageId}--${response}`)
+            sendSSEResponse(
+                messageId,
+                PROTOCOL_CONTEXT.ON_INFO,
+                response,
+            );
+
+            return {
+                message: {
+                    ack: {
+                        status: "ACK"
+                    }
+                }
+            };
+        }
+        catch (err) {
+            throw err;
+        }
+    }
+
+
+    async info(response) {
+        try {
+            const { messageId } = response;
+
+
+            console.log(`[DEBUG] onInit---${messageId}--${response}`)
+            sendSSEResponse(
+                messageId,
+                PROTOCOL_CONTEXT.INFO,
+                response,
+            );
+
+            return {
+                message: {
+                    ack: {
+                        status: "ACK"
+                    }
+                }
+            };
+        }
+        catch (err) {
+            throw err;
+        }
+    }
+
     /**
     * on search
     * @param {Object} response 

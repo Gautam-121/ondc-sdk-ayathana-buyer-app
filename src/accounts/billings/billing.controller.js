@@ -1,4 +1,6 @@
 import BillingService from './billing.service.js';
+import {validationResult} from "express-validator"
+import BadRequestParameterError from '../../lib/errors/bad-request-parameter.error.js';
 
 const billingService = new BillingService();
 
@@ -12,7 +14,13 @@ class BillingController {
     * @return {callback}
     */
     billingAddress(req, res, next) {
-        const { body: request, user} = req;
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+
+        const { body: request, user } = req;
 
         billingService.billingAddress(request, user).then(response => {
             res.json(response);
@@ -46,6 +54,12 @@ class BillingController {
     * @return {callback}
     */
     updateBillingAddress(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+        
         const { body: request, params } = req;
         const { id } = params;
 

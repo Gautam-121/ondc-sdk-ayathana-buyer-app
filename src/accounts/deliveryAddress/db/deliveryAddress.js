@@ -37,7 +37,7 @@ const DescriptorSchema = new mongoose.Schema(
 
 const DeliveryAddressSchema = new mongoose.Schema(
     {
-        userId: String,
+        userId: String, // Reference
         id: { type: String, required: true },
         descriptor: { type: DescriptorSchema, default: null },
         gps: { type: String, default: null },

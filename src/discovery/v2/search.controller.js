@@ -2,6 +2,7 @@ import SearchService from './search.service.js';
 import BadRequestParameterError from '../../lib/errors/bad-request-parameter.error.js';
 import NoRecordFoundError from "../../lib/errors/no-record-found.error.js";
 import { SSE_CONNECTIONS } from '../../utils/sse.js';
+import { validationResult } from "express-validator";
 
 const searchService = new SearchService();
 
@@ -15,9 +16,13 @@ class SearchController {
     * @return {callback}
     */
     search(req, res, next) {
-        const searchRequest = req.query;
 
-        console.log({searchRequest})
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+        
+        const searchRequest = req.query;
         const headers = req.headers;
 
         let targetLanguage = headers['targetlanguage'];
@@ -59,9 +64,13 @@ class SearchController {
     }
 
     getProvideDetails(req, res, next) {
-        const searchRequest = req.query;
 
-        console.log({searchRequest})
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+
+        const searchRequest = req.query;
         const headers = req.headers;
 
         let targetLanguage = headers['targetlanguage'];
@@ -70,7 +79,7 @@ class SearchController {
         {
             targetLanguage = undefined
         }
-        searchService.getProvideDetails(searchRequest,targetLanguage).then(response => {
+        searchService.getProviderDetails(searchRequest,targetLanguage).then(response => {
             if(!response || response === null)
                 throw new NoRecordFoundError("No result found");
             else
@@ -99,10 +108,10 @@ class SearchController {
     }
 
     getItemDetails(req, res, next) {
-        const searchRequest = req.query;
-
-        console.log({searchRequest})
+        const searchRequest = req.params;
         const headers = req.headers;
+
+        console.log(searchRequest)
 
         let targetLanguage = headers['targetlanguage'];
 
@@ -295,8 +304,6 @@ class SearchController {
 
     getUniqueCategories(req, res, next) {
         const searchRequest = req.query;
-
-        console.log({searchRequest})
         const headers = req.headers;
 
         let targetLanguage = headers['targetlanguage'];
@@ -341,6 +348,12 @@ class SearchController {
     * @return {callback}
     */
     getProviders(req, res, next) {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            throw new BadRequestParameterError(errors.array()[0].msg);
+        }
+        
         const searchRequest = req.query;
         const headers = req.headers;
 

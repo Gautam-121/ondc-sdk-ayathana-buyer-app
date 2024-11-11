@@ -1,6 +1,6 @@
 import {Router} from 'express';
 import { authentication } from '../../middlewares/index.js';
-
+import searchValidator from "./search.validator..js"
 import SearchController from './search.controller.js';
 
 const router = new Router();
@@ -8,7 +8,7 @@ const searchController = new SearchController();
 
 // search
 router.get(
-    '/v2/search',authentication(),  searchController.search,
+    '/v2/search',authentication(), searchValidator.search , searchController.search,
 );
 
 // search
@@ -28,7 +28,7 @@ router.get(
 
 // get item details
 router.get(
-    '/v2/provider-details',authentication(),searchController.getProvideDetails,
+    '/v2/provider-details',authentication(), searchValidator.providerDetails , searchController.getProvideDetails,
 );
 // get item details
 router.get(
@@ -37,7 +37,7 @@ router.get(
 
 // get item details
 router.get(
-    '/v2/item-details',authentication(),searchController.getItemDetails,
+    '/v2/item-details/:id',authentication(),searchController.getItemDetails,
 );
 
 // get item details
@@ -73,7 +73,7 @@ router.get(
 
 // get providers
 router.get(
-    '/v2/providers',authentication(),  searchController.getProviders,
+    '/v2/providers',authentication(), searchValidator.provider , searchController.getProviders,
 );
 
 // get providers

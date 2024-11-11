@@ -138,9 +138,15 @@ class ConfirmOrderService {
             paymentStatus = {txn_id:requestContext?.transaction_id}
             // }
 
+            // const bppConfirmResponse = await bppConfirmService.confirmV2(
+            //     context,
+            //     {...order,jusPayTransactionId:paymentData.razorpay_order_id},
+            //     dbResponse
+            // );
+
             const bppConfirmResponse = await bppConfirmService.confirmV2(
                 context,
-                {...order,jusPayTransactionId:paymentData.razorpay_order_id},
+                {...order,jusPayTransactionId:paymentData},
                 dbResponse
             );
 

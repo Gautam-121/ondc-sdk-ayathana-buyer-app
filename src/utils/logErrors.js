@@ -11,7 +11,8 @@ const logErrors = (err, req, res, next) => {
         status: err.status, 
         error: {
             name: err.name,
-            message: err.message
+            message: err.message,
+            errors: err?.errors?.errors
         }
     });
     

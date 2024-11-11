@@ -70,7 +70,7 @@ class BppInitService {
                 let selectitem = {
                     id: item?.local_id?.toString(),
                     quantity: item?.quantity,
-                    location_id: item?.product?.location_id?.toString()
+                    // location_id: item?.product?.location_id?.toString() // self commented
                 }
                 locationSet.add(item?.product?.location_id?.toString());
                 let tag=undefined
@@ -92,7 +92,7 @@ class BppInitService {
                         let selectitem = {
                             id: customisation?.local_id?.toString(),
                             quantity: customisation.quantity,
-                            location_id: item?.product?.location_id?.toString()
+                            // location_id: item?.product?.location_id?.toString()
                         }
                         let tag=undefined
                         if(customisation.item_details.tags && customisation.item_details.tags.length>0){
@@ -146,7 +146,7 @@ class BppInitService {
                             type: order.delivery_info.type,
                             end: {
                                 contact: {
-                                    email: order.delivery_info.email,
+                                    // email: order.delivery_info.email,
                                     phone: order.delivery_info.phone
                                 },
                                 location: {
@@ -185,7 +185,8 @@ class BppInitService {
                     parent_order_id: parentOrderId,
                     provider_id: provider.id
                 },
-                message: response.message
+                message: response.message,
+                error: response?.error
             };
         }
         catch (err) {
