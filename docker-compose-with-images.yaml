@@ -134,6 +134,9 @@ services:
       - 3000
     depends_on:
       - mongo
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
 
   py-ondc-protocol:
     build:
@@ -151,6 +154,9 @@ services:
       - 5555:5555
     expose:
       - 5555
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
 
   biap-igm-node-js:
     build:

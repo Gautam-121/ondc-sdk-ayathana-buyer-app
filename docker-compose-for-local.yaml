@@ -39,9 +39,9 @@ services:
       - mmi-client
       - biap-client-node-js
     expose:
-      - 80
+      - 81
     ports:
-      - 80:80
+      - 81:81
 
   # Client Layer
   biap-client-node-js:
@@ -96,6 +96,11 @@ services:
         DLT_MESSAGE_TYPE: ${DLT_MESSAGE_TYPE}
         CORS_WHITELIST_URLS: ${CORS_WHITELIST_URLS}
         ELASTIC_SEARCH_URL: http://elasticsearch:9200
+        BAP_GST_NUMBER: ${BAP_GST_NUMBER}
+        PHONEPE_API_URL: ${PHONEPE_API_URL}
+        PHONEPE_MERCHANT_ID: ${PHONEPE_MERCHANT_ID}
+        PHONEPE_SALT_KEY: ${PHONEPE_SALT_KEY}
+        PHONEPE_SALT_INDEX: ${PHONEPE_SALT_INDEX}
     ports:
       - 3000:3000
     expose:
@@ -194,7 +199,7 @@ services:
       - "ES_JAVA_OPTS=-Xms2g -Xmx6g"  # Adjust as per your server resources
       - "http.max_content_length=200mb"  # Adjust based on your payload size
     volumes:
-      - D:/elasticsearch/data:/usr/share/elasticsearch/data  # Point to D: drive
+      -  D:/elasticsearch/data:/usr/share/elasticsearch/data   # Windows path
     ports:
       - 9200:9200
       - 9300:9300
